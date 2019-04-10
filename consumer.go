@@ -159,12 +159,22 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 
 func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool, threads int, cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) {
 
-	var err error
+	if threads < 1 {
+		threads = 1
+	}
+
+	var (
+		err   error
+		round uint64
+	)
 	for {
+		ro := atomic.AddUint64(&round, 1)
+		log.Printf("aamqp consumer round %d\n", ro)
 
 		// 当 deliveries 置空后，这些协程将会被全部自动回收
 		for i := 0; i < threads; i++ {
-			go func() {
+			go func(ro uint64, id int) {
+				log.Printf("amqp consumer coroutine(%d-%d) is starting...\n", ro, id)
 				for msg := range deliveries {
 					ret := false
 					try.This(func() {
@@ -189,8 +199,8 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 						log.Printf("delivery failed: %s\n", e)
 					})
 				}
-				log.Println("Consumer coroutine destroyed")
-			}()
+				log.Printf("amqp consumer coroutine(%d-%d) destroyed\n", ro, id)
+			}(ro, i)
 		}
 
 		runtime.Gosched()
@@ -200,13 +210,13 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 			c.currentStatus.Store(false)
 			retryTime := 1
 			for {
-				log.Printf("reconnecting %dth time\n", retryTime)
+				log.Printf("round %d failed, reconnecting %dth time\n", ro, retryTime)
 				deliveries, err = c.Reconnect(cp, que, qos, bindings...)
 				if err != nil {
-					log.Printf("reconnecting failed: %s\n", err)
+					log.Printf("round %d failed, reconnecting failed: %s\n", ro, err)
 					retryTime++
 				} else {
-					log.Println("reconnecting success")
+					log.Printf("round %d failed, reconnecting success", ro)
 					break
 				}
 				time.Sleep(time.Duration(15+rand.Intn(60)+2*retryTime) * time.Second)
@@ -214,6 +224,5 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 		}
 
 		time.Sleep(time.Second)
-		log.Println("aamqp consumer re-handling...")
 	}
 }
