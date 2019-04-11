@@ -184,6 +184,7 @@ func (c *Consumer) recheckAlive() {
 		case now := <-tick.C:
 			t := now.Unix()
 			if t-c.lastDeliveryTime > RecheckAliveInterval {
+				log.Println("aamqp idle consumer connection is closing...")
 				c.Close()
 			}
 		case <-c.ctx.Done():
