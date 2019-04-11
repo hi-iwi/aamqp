@@ -1,12 +1,14 @@
 package aamqp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,9 +16,16 @@ import (
 	"github.com/streadway/amqp"
 )
 
-const RECOVER_INTERVAL_TIME = 6 * 60
+const (
+	RecheckAliveInterval = int64(6 * 60)
+	RecoverIntervalTime  = int64(6 * 60)
+)
 
 type Consumer struct {
+	mtx    sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	cc      ConnectionConfig
 	conn    *amqp.Connection
 	channel *amqp.Channel
@@ -26,8 +35,9 @@ type Consumer struct {
 	uri      string
 	exchange Exchange
 
-	lastRecoverTime int64
-	currentStatus   atomic.Value
+	lastRecoverTime  int64
+	currentStatus    atomic.Value
+	lastDeliveryTime int64
 }
 
 func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consumer {
@@ -40,6 +50,8 @@ func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consume
 		cc = ccs[0]
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	consumer := &Consumer{
 		cc:              cc.withDefault(),
 		Tag:             fmt.Sprintf("%s-%s", tag, name),
@@ -47,6 +59,8 @@ func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consume
 		exchange:        ex,
 		done:            make(chan error),
 		lastRecoverTime: time.Now().Unix(),
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 	consumer.currentStatus.Store(true)
 	return consumer
@@ -95,6 +109,7 @@ func (c *Consumer) Connect() (err error) {
 }
 
 func (c *Consumer) Close() {
+
 	if c.channel != nil {
 		c.channel.Close()
 		c.channel = nil
@@ -146,6 +161,8 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 		}
 	}
 
+	c.lastDeliveryTime = time.Now().Unix()
+
 	return c.channel.Consume(
 		queue.Name,
 		c.Tag,
@@ -157,11 +174,32 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 	)
 }
 
+func (c *Consumer) recheckAlive() {
+	time.Sleep(10 * time.Minute)
+
+	tick := time.NewTicker(time.Duration(RecheckAliveInterval) * time.Second)
+
+	for {
+		select {
+		case now := <-tick.C:
+			t := now.Unix()
+			if t-c.lastDeliveryTime > RecheckAliveInterval {
+				c.Close()
+			}
+		case <-c.ctx.Done():
+			return
+		}
+		runtime.Gosched()
+	}
+}
+
 func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool, threads int, cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) {
 
 	if threads < 1 {
 		threads = 1
 	}
+
+	go c.recheckAlive()
 
 	var (
 		err   error
@@ -181,10 +219,11 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 						body := msg.Body[:]
 						ret = fn(body)
 					}).Finally(func() {
+						currentTime := time.Now().Unix()
+						c.lastDeliveryTime = currentTime
 						if ret == true {
 							msg.Ack(false)
-							currentTime := time.Now().Unix()
-							if currentTime-c.lastRecoverTime > RECOVER_INTERVAL_TIME && !c.currentStatus.Load().(bool) {
+							if currentTime-c.lastRecoverTime > RecoverIntervalTime && !c.currentStatus.Load().(bool) {
 								c.currentStatus.Store(true)
 								c.lastRecoverTime = currentTime
 								c.channel.Recover(true)
@@ -203,26 +242,28 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 			}(ro, i)
 		}
 
-		runtime.Gosched()
-
-		// Go into reconnect loop when c.done is passed non nil values
-		if <-c.done != nil {
-			c.currentStatus.Store(false)
-			retryTime := 1
-			for {
-				log.Printf("round %d failed, reconnecting %dth time\n", ro, retryTime)
-				deliveries, err = c.Reconnect(cp, que, qos, bindings...)
-				if err != nil {
-					log.Printf("round %d failed, reconnecting failed: %s\n", ro, err)
-					retryTime++
-				} else {
-					log.Printf("round %d failed, reconnecting success", ro)
-					break
+		select {
+		case d := <-c.done:
+			// Go into reconnect loop when c.done is passed non nil values
+			if d != nil {
+				c.currentStatus.Store(false)
+				retryTime := 1
+				for {
+					deliveries, err = c.Reconnect(cp, que, qos, bindings...)
+					if err != nil {
+						log.Printf("round %d failed, reconnecting failed: %s\n", ro, err)
+						retryTime++
+					} else {
+						log.Printf("round %d failed, reconnecting success", ro)
+						break
+					}
+					time.Sleep(time.Duration(15+rand.Intn(60)+2*retryTime) * time.Second)
 				}
-				time.Sleep(time.Duration(15+rand.Intn(60)+2*retryTime) * time.Second)
 			}
+		case <-c.ctx.Done():
+			return
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(time.Second) // runtime.Gosched()
 	}
 }
