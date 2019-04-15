@@ -22,9 +22,8 @@ const (
 )
 
 type Consumer struct {
-	mtx    sync.Mutex
-	ctx    context.Context
-	cancel context.CancelFunc
+	mtx sync.Mutex
+	ctx context.Context
 
 	cc      ConnectionConfig
 	conn    *amqp.Connection
@@ -40,7 +39,7 @@ type Consumer struct {
 	lastDeliveryTime int64
 }
 
-func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consumer {
+func NewConsumer(ctx context.Context, tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consumer {
 	name, err := os.Hostname()
 	if err != nil {
 		name = ex.Name + ex.Kind
@@ -50,7 +49,7 @@ func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consume
 		cc = ccs[0]
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	//ctx, cancel := context.WithCancel(context.Background())
 
 	consumer := &Consumer{
 		cc:              cc.withDefault(),
@@ -60,7 +59,6 @@ func NewConsumer(tag, uri string, ex Exchange, ccs ...ConnectionConfig) *Consume
 		done:            make(chan error),
 		lastRecoverTime: time.Now().Unix(),
 		ctx:             ctx,
-		cancel:          cancel,
 	}
 	consumer.currentStatus.Store(true)
 	return consumer
@@ -131,8 +129,7 @@ func (c *Consumer) Reconnect(cp ConsumeParams, que Queue, qos *BasicQos, binding
 
 }
 
-// ConsumeQueue
-// 同一个连接，可以进行多个 ConsumeQueue。对于相同订阅的， 同一条消息，只有其中一个 ConsumeQueue 可以接收到消息。
+// ConsumeQueue 同一个连接，可以进行多个 ConsumeQueue。对于相同订阅的， 同一条消息，只有其中一个 ConsumeQueue 可以接收到消息。
 func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) (<-chan amqp.Delivery, error) {
 	if c.channel == nil {
 		return nil, fmt.Errorf("no connected channel")
@@ -184,7 +181,7 @@ func (c *Consumer) recheckAlive() {
 		case now := <-tick.C:
 			t := now.Unix()
 			if t-c.lastDeliveryTime > RecheckAliveInterval {
-				log.Println("aamqp idle consumer connection is closing...")
+				log.Println("closing idle connection for aamqp consumer...")
 				c.Close()
 			}
 		case <-c.ctx.Done():
@@ -194,13 +191,7 @@ func (c *Consumer) recheckAlive() {
 	}
 }
 
-func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool, threads int, cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) {
-
-	if threads < 1 {
-		threads = 1
-	}
-
-	go c.recheckAlive()
+func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool, threads int, cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) {
 
 	var (
 		err   error
@@ -267,4 +258,13 @@ func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 
 		time.Sleep(time.Second) // runtime.Gosched()
 	}
+}
+func (c *Consumer) Handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool, threads int, cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) {
+
+	if threads < 1 {
+		threads = 1
+	}
+
+	go c.recheckAlive()
+	go c.handle(deliveries, fn, threads, cp, que, qos, bindings...)
 }
