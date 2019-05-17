@@ -1,6 +1,7 @@
 package aamqp_test
 
 import (
+	"context"
 	"log"
 	"runtime"
 	"testing"
@@ -32,7 +33,7 @@ func TestRouting(t *testing.T) {
 		Timeout: 2 * time.Second,
 	}
 
-	consumer := aamqp.NewConsumer("routing_consumer_1", uri, ex, cc)
+	consumer := aamqp.NewConsumer(context.Background(), "routing_consumer_1", uri, ex, cc)
 
 	if err := consumer.Connect(); err != nil {
 		t.Errorf("AMQP consumer %s connect failed: %s", consumer.Tag, err)
@@ -53,10 +54,10 @@ func TestRouting(t *testing.T) {
 	}
 	consumer.Handle(deliveries, infoLogHandler, maxParallelism(), cp, que, qos, binding, binding2, binding3)
 
-	consumer2 := aamqp.NewConsumer("routing_consumer_2", uri, ex, cc)
+	consumer2 := aamqp.NewConsumer(context.Background(), "routing_consumer_2", uri, ex, cc)
 
-	if err := consumer.Connect(); err != nil {
-		t.Errorf("AMQP consumer %s connect failed: %s", consumer.Tag, err)
+	if err := consumer2.Connect(); err != nil {
+		t.Errorf("AMQP consumer2 %s connect failed: %s", consumer2.Tag, err)
 		return
 	}
 
@@ -70,6 +71,6 @@ func TestRouting(t *testing.T) {
 		t.Errorf("AMQP consume queue failed: %s", err)
 		return
 	}
-	consumer.Handle(deliveries2, errorLogHandler, maxParallelism(), cp2, que2, qos2, bindingB)
+	consumer2.Handle(deliveries2, errorLogHandler, maxParallelism(), cp2, que2, qos2, bindingB)
 
 }
