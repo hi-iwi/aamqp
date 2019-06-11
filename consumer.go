@@ -35,7 +35,6 @@ type Consumer struct {
 	exchange Exchange
 
 	lastRecoverTime  int64
-	currentStatus    atomic.Value
 	lastDeliveryTime int64
 }
 
@@ -60,7 +59,6 @@ func NewConsumer(ctx context.Context, tag, uri string, ex Exchange, ccs ...Conne
 		lastRecoverTime: time.Now().Unix(),
 		ctx:             ctx,
 	}
-	consumer.currentStatus.Store(true)
 	return consumer
 }
 
@@ -172,7 +170,7 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 }
 
 func (c *Consumer) recheckAlive() {
-	time.Sleep(10 * time.Minute)
+	time.Sleep(time.Minute)
 
 	tick := time.NewTicker(time.Duration(RecheckAliveInterval) * time.Second)
 
@@ -215,16 +213,13 @@ func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 						c.lastDeliveryTime = currentTime
 						if ret == true {
 							msg.Ack(false)
-							if currentTime-c.lastRecoverTime > RecoverIntervalTime && !c.currentStatus.Load().(bool) {
-								c.currentStatus.Store(true)
-								c.lastRecoverTime = currentTime
-								c.channel.Recover(true)
-							}
 						} else {
 							// this really a litter dangerous. if the worker is panic very quickly,
 							// it will ddos our sentry server......plz, add [retry-ttl] in header.
 							msg.Nack(false, true)
-							c.currentStatus.Store(false)
+
+							// @warn If the deliveries cannot be recovered, an error will be returned and the channel will be closed.
+							// c.channel.Recover(true)
 						}
 					}).Catch(func(e try.E) {
 						log.Printf("delivery failed: %s\n", e)
@@ -238,7 +233,6 @@ func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 		case d := <-c.done:
 			// Go into reconnect loop when c.done is passed non nil values
 			if d != nil {
-				c.currentStatus.Store(false)
 				retryTime := 1
 				for {
 					deliveries, err = c.Reconnect(cp, que, qos, bindings...)
