@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultProduct           = "https://github.com/luexu/AaGo"
+	defaultProduct           = "http://luexu.com"
 	defaultVersion           = "Aario"
 	defaultConnectionTimeout = 5 * time.Second
 	defaultHeartbeat         = 10 * time.Second
