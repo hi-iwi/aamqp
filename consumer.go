@@ -172,7 +172,9 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 func (c *Consumer) recheckAlive() {
 	time.Sleep(time.Minute)
 
-	tick := time.NewTicker(time.Duration(RecheckAliveInterval) * time.Second)
+	rai := RecheckAliveInterval + rand.Int63n(15)
+
+	tick := time.NewTicker(time.Duration(rai) * time.Second)
 
 	for {
 		select {
