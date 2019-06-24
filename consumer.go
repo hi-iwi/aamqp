@@ -123,7 +123,6 @@ func (c *Consumer) Reconnect(cp ConsumeParams, que Queue, qos *BasicQos, binding
 	}
 
 	return c.ConsumeQueue(cp, que, qos, bindings...)
-
 }
 
 // ConsumeQueue 同一个连接，可以进行多个 ConsumeQueue。对于相同订阅的， 同一条消息，只有其中一个 ConsumeQueue 可以接收到消息。
