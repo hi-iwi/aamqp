@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	RecheckAliveInterval = int64(6 * 60)
-	RecoverIntervalTime  = int64(6 * 60)
+	RecheckAliveInterval = int64(30 * 60) // 30 minutes
 )
 
 type Consumer struct {
@@ -181,6 +180,7 @@ func (c *Consumer) recheckAlive() {
 		case now := <-tick.C:
 			t := now.Unix()
 			if t-c.lastDeliveryTime > RecheckAliveInterval {
+				c.lastDeliveryTime = t
 				log.Println("closing idle connection for aamqp consumer...")
 				c.Close()
 			}
