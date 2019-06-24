@@ -199,12 +199,10 @@ func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 	)
 	for {
 		ro := atomic.AddUint64(&round, 1)
-		log.Printf("aamqp consumer round %d\n", ro)
 
 		// 当 deliveries 置空后，这些协程将会被全部自动回收
 		for i := 0; i < threads; i++ {
 			go func(ro uint64, id int) {
-				log.Printf("amqp consumer coroutine(%d-%d) is starting...\n", ro, id)
 				for msg := range deliveries {
 					ret := false
 					try.This(func() {
