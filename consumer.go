@@ -199,6 +199,7 @@ func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 	)
 	for {
 		ro := atomic.AddUint64(&round, 1)
+		log.Printf("consuming aamqp tag: %s, exchange: %s, queue: %s, round %d\n", c.Tag, c.exchange.Name, que.Name, ro)
 
 		// 当 deliveries 置空后，这些协程将会被全部自动回收
 		for i := 0; i < threads; i++ {
