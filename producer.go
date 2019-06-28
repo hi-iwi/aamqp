@@ -3,7 +3,6 @@ package aamqp
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/streadway/amqp"
 )
@@ -86,23 +85,23 @@ func (p *Producer) Pub(exchange, key string, mandatory, immediate bool, msg amqp
 	}
 	conn, err := amqp.DialConfig(p.uri, ac)
 	if err != nil {
-		return fmt.Errorf("failed to connect to AMQP broker: %s", err)
+		return errors.New("failed to connect to AMQP broker: " + err.Error())
 	}
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	if err != nil {
-		return fmt.Errorf("failed to open a channel: %s", err)
+		return errors.New("failed to open a channel: " + err.Error())
 	}
 	defer ch.Close()
 
 	if err = ch.ExchangeDeclare(p.exchange.Name, p.exchange.Kind, p.exchange.Durable, p.exchange.AutoDelete, p.exchange.Internal, p.exchange.NoWait, p.exchange.Args); err != nil {
-		return fmt.Errorf("exchange declare error: %s", err)
+		return errors.New("exchange declare error: " + err.Error())
 	}
 
 	if confirming != nil {
 		if err = ch.Confirm(false); err != nil {
-			return fmt.Errorf("channel could not be put into confirm mode: %s", err)
+			return errors.New("channel could not be put into confirm mode: " + err.Error())
 		}
 		confirms := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
 		defer confirming(confirms)

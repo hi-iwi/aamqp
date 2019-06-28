@@ -3,7 +3,6 @@ package aamqp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"math/rand"
 	"os"
@@ -51,7 +50,7 @@ func NewConsumer(ctx context.Context, tag, uri string, ex Exchange, ccs ...Conne
 
 	consumer := &Consumer{
 		cc:              cc.withDefault(),
-		Tag:             fmt.Sprintf("%s-%s", tag, name),
+		Tag:             tag + "-" + name,
 		uri:             uri,
 		exchange:        ex,
 		done:            make(chan error),
@@ -74,7 +73,7 @@ func (c *Consumer) Connect() (err error) {
 	c.conn, err = amqp.DialConfig(c.uri, ac)
 
 	if err != nil {
-		return fmt.Errorf("Dial: %s", err)
+		return errors.New("Dial: " + err.Error())
 	}
 
 	go func() {
@@ -84,7 +83,7 @@ func (c *Consumer) Connect() (err error) {
 
 	c.channel, err = c.conn.Channel()
 	if err != nil {
-		return fmt.Errorf("Channel: %s", err)
+		return errors.New("Channel: " + err.Error())
 	}
 
 	err = c.channel.ExchangeDeclare(
@@ -97,7 +96,7 @@ func (c *Consumer) Connect() (err error) {
 		c.exchange.Args,
 	)
 	if err != nil {
-		return fmt.Errorf("Exchange Declare: %s", err)
+		return errors.New("Exchange Declare: " + err.Error())
 	}
 
 	return
@@ -128,7 +127,7 @@ func (c *Consumer) Reconnect(cp ConsumeParams, que Queue, qos *BasicQos, binding
 // ConsumeQueue 同一个连接，可以进行多个 ConsumeQueue。对于相同订阅的， 同一条消息，只有其中一个 ConsumeQueue 可以接收到消息。
 func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bindings ...QueueBinding) (<-chan amqp.Delivery, error) {
 	if c.channel == nil {
-		return nil, fmt.Errorf("no connected channel")
+		return nil, errors.New("no connected channel")
 	}
 	queue, err := c.channel.QueueDeclare(
 		que.Name,
@@ -139,18 +138,18 @@ func (c *Consumer) ConsumeQueue(cp ConsumeParams, que Queue, qos *BasicQos, bind
 		que.Args,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Queue Declare: %s", err)
+		return nil, errors.New("Queue Declare: " + err.Error())
 	}
 
 	if qos != nil {
 		if err = c.channel.Qos(qos.PrefetchCount, qos.PrefetchSize, qos.Global); err != nil {
-			return nil, fmt.Errorf("Qos Setting: %s", err)
+			return nil, errors.New("Qos Setting: " + err.Error())
 		}
 	}
 
 	for _, bind := range bindings {
 		if err = c.channel.QueueBind(queue.Name, bind.Key, bind.Exchange, bind.NoWait, bind.Args); err != nil {
-			return nil, fmt.Errorf("Queue Bind: %s", err)
+			return nil, errors.New("Queue Bind: " + err.Error())
 		}
 	}
 
