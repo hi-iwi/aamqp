@@ -225,7 +225,7 @@ func (c *Consumer) handle(deliveries <-chan amqp.Delivery, fn func([]byte) bool,
 						log.Printf("delivery failed: %s\n", e)
 					})
 				}
-				log.Printf("amqp consumer coroutine(%d-%d) destroyed\n", ro, id)
+				//log.Printf("amqp consumer coroutine(%d-%d) destroyed\n", ro, id)
 			}(ro, i)
 		}
 
