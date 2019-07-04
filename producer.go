@@ -54,9 +54,9 @@ func NewProducer(uri string, ex Exchange, ccs ...ConnectionConfig) *Producer {
 func (p *Producer) connect() (*amqp.Connection, error) {
 	ac := amqp.Config{
 		Properties: amqp.Table{
-			"product":   defaultProduct,
-			"version":   defaultVersion,
-			"connector": "producer",
+			"product": defaultProduct,
+			"version": defaultVersion,
+			"role":    "producer",
 		},
 		Heartbeat: p.cc.Heartbeat,
 		Locale:    p.cc.Locale,

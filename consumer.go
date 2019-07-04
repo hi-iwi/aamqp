@@ -63,9 +63,9 @@ func NewConsumer(ctx context.Context, tag, uri string, ex Exchange, ccs ...Conne
 func (c *Consumer) Connect() (err error) {
 	ac := amqp.Config{
 		Properties: amqp.Table{
-			"product":   defaultProduct,
-			"version":   defaultVersion,
-			"connector": "consumer",
+			"product": defaultProduct,
+			"version": defaultVersion,
+			"role":    "consumer",
 		},
 		Heartbeat: c.cc.Heartbeat,
 		Locale:    c.cc.Locale,
