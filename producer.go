@@ -5,13 +5,16 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"sync/atomic"
 
 	"github.com/streadway/amqp"
 )
 
 var (
-	connPool *sync.Pool
-	connOnce sync.Once
+	connPool                   *sync.Pool
+	connOnce                   sync.Once
+	producerLongConnections    uint32
+	MaxProducerLongConnections uint32 = 100
 )
 
 type Producer struct {
@@ -74,28 +77,32 @@ func (p *Producer) ConnectionPool() (*Conn, error) {
 				if err != nil {
 					log.Println("amqp connection error: " + err.Error())
 				}
+				atomic.AddUint32(&producerLongConnections, 1)
 				return c
 			},
 		}
 	})
 
-	c := connPool.Get().(*amqp.Connection)
-	if c == nil || c.IsClosed() {
-		// using short connection
-		c, err := p.connect()
-		if err != nil {
-			return nil, err
+	pconn := atomic.LoadUint32(&producerLongConnections)
+	if pconn < MaxProducerLongConnections {
+		if c := connPool.Get().(*amqp.Connection); c != nil && !c.IsClosed() {
+			return &Conn{
+				longConnection: true,
+				connection:     c,
+			}, nil
 		}
-		return &Conn{
-			longConnection: false,
-			connection:     c,
-		}, nil
 	}
 
+	// using short connection
+	c, err := p.connect()
+	if err != nil {
+		return nil, err
+	}
 	return &Conn{
-		longConnection: true,
+		longConnection: false,
 		connection:     c,
 	}, nil
+
 }
 
 // SimplePub msg[, key[, exchange]]
