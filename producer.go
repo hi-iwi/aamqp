@@ -14,7 +14,7 @@ var (
 	connPool                   *sync.Pool
 	connOnce                   sync.Once
 	producerLongConnections    uint32
-	MaxProducerLongConnections uint32 = 100
+	MaxProducerLongConnections uint32 = 10
 )
 
 type Producer struct {
