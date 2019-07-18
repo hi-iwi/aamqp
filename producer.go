@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	connPool                   *sync.Pool
-	connOnce                   sync.Once
-	producerLongConnections    uint32
-	MaxProducerLongConnections uint32 = 20
+	connPool                        *sync.Pool
+	connOnce                        sync.Once
+	longLivedProducerConnections    uint32
+	MaxLongLivedProducerConnections uint32 = 20
 )
 
 type Producer struct {
@@ -77,14 +77,14 @@ func (p *Producer) ConnectionPool() (*Conn, error) {
 				if err != nil {
 					log.Println("amqp connection error: " + err.Error())
 				}
-				atomic.AddUint32(&producerLongConnections, 1)
+				atomic.AddUint32(&longLivedProducerConnections, 1)
 				return c
 			},
 		}
 	})
 
-	pconn := atomic.LoadUint32(&producerLongConnections)
-	if pconn < MaxProducerLongConnections {
+	pconn := atomic.LoadUint32(&longLivedProducerConnections)
+	if pconn < MaxLongLivedProducerConnections {
 		if c := connPool.Get().(*amqp.Connection); c != nil && !c.IsClosed() {
 			return &Conn{
 				longConnection: true,
